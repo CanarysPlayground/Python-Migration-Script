@@ -38,8 +38,8 @@ logging.basicConfig(
 
 OUTPUT_FILE = "MigrationDetails.csv"
 
-# Try to locate gh CLI
-GH_CLI = "gh"  # assumes in PATH; else put full path like r"C:\Program Files\GitHub CLI\gh.exe"
+# gh CLI
+GH_CLI = "gh"  # if not in PATH, set full path like r"C:\Program Files\GitHub CLI\gh.exe"
 
 
 def run_with_progress(cmd):
@@ -68,55 +68,58 @@ def run_with_progress(cmd):
 
 
 def migrate_repos(csv_file):
-    results = []
-    total = sum(1 for _ in open(csv_file)) - 1  # exclude header
+    # Read CSV and filter only valid rows
+    with open(csv_file, newline="") as f:
+        reader = csv.DictReader(f)
+        repo_list = [row for row in reader if row.get("CURRENT-NAME", "").strip()]
+
+    total = len(repo_list)
     completed = 0
+    results = []
 
-    with open(csv_file, newline="") as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            source_repo = row["CURRENT-NAME"].strip()
-            target_repo = row["NEW-NAME"].strip()
+    for row in repo_list:
+        source_repo = row["CURRENT-NAME"].strip()
+        target_repo = row["NEW-NAME"].strip()
 
-            print(f"\n🔄 Starting migration: {SOURCE_ORG}/{source_repo} → {DESTINATION_ORG}/{target_repo}")
+        print(f"\n🔄 Starting migration: {SOURCE_ORG}/{source_repo} → {DESTINATION_ORG}/{target_repo}")
 
-            cmd = (
-                f'"{GH_CLI}" gei migrate-repo '
-                f'--github-source-org "{SOURCE_ORG}" '
-                f'--source-repo "{source_repo}" '
-                f'--github-target-org "{DESTINATION_ORG}" '
-                f'--target-repo "{target_repo}" '
-                f'--target-api-url "{TARGET_API_URL}"'
-            )
+        cmd = (
+            f'"{GH_CLI}" gei migrate-repo '
+            f'--github-source-org "{SOURCE_ORG}" '
+            f'--source-repo "{source_repo}" '
+            f'--github-target-org "{DESTINATION_ORG}" '
+            f'--target-repo "{target_repo}" '
+            f'--target-api-url "{TARGET_API_URL}"'
+        )
 
-            start_time = datetime.now(timezone.utc)
-            success, output = run_with_progress(cmd)
-            end_time = datetime.now(timezone.utc)
+        start_time = datetime.now(timezone.utc)
+        success, output = run_with_progress(cmd)
+        end_time = datetime.now(timezone.utc)
 
-            duration_seconds = (end_time - start_time).total_seconds()
-            duration_minutes = round(duration_seconds / 60, 2)
+        duration_seconds = (end_time - start_time).total_seconds()
+        duration_minutes = round(duration_seconds / 60, 2)
 
-            completed += 1
-            status_msg = "✅ Completed" if success else "❌ Failed"
-            print(f"{status_msg} {source_repo} → {target_repo} ({completed}/{total}) "
-                  f"in {round(duration_seconds, 2)}s")
+        completed += 1
+        status_msg = "✅ Completed" if success else "❌ Failed"
+        print(f"{status_msg} {source_repo} → {target_repo} ({completed}/{total}) "
+              f"in {round(duration_seconds, 2)}s")
 
-            results.append({
-                "SourceOrg": SOURCE_ORG,
-                "SourceRepo": source_repo,
-                "TargetOrg": DESTINATION_ORG,
-                "TargetRepo": target_repo,
-                "Status": "Success" if success else "Failed",
-                "StartTime": start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                "EndTime": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                "TimeTakenSeconds": round(duration_seconds, 2),
-                "TimeTakenMinutes": duration_minutes
-            })
+        results.append({
+            "SourceOrg": SOURCE_ORG,
+            "SourceRepo": source_repo,
+            "TargetOrg": DESTINATION_ORG,
+            "TargetRepo": target_repo,
+            "Status": "Success" if success else "Failed",
+            "StartTime": start_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "EndTime": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "TimeTakenSeconds": round(duration_seconds, 2),
+            "TimeTakenMinutes": duration_minutes
+        })
 
     # Write output CSV
     with open(OUTPUT_FILE, "w", newline="") as csvout:
-        fieldnames = ["SourceOrg", "SourceRepo", "TargetOrg", "TargetRepo",
-                      "Status", "StartTime", "EndTime", "TimeTakenSeconds", "TimeTakenMinutes"]
+        fieldnames = ["SourceOrg","SourceRepo","TargetOrg","TargetRepo",
+                      "Status","StartTime","EndTime","TimeTakenSeconds","TimeTakenMinutes"]
         writer = csv.DictWriter(csvout, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(results)
